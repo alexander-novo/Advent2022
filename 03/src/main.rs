@@ -1,4 +1,5 @@
 #![feature(iter_array_chunks)]
+#![feature(array_methods)]
 use std::{
     error::Error,
     fs::File,
@@ -160,7 +161,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         Mode::Triple => Box::new(
             lines
                 .array_chunks::<3>()
-                .map(|sacks| get_common_item([&sacks[0], &sacks[1], &sacks[2]])),
+                // Annoying type conversions
+                .map(|sacks| get_common_item(sacks.each_ref().map(|v| &v[..]))),
         ),
     };
 
