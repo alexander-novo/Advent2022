@@ -196,6 +196,8 @@ fn main() -> Result<()> {
 		Mode::Reverse => simulate::<true, _>(lines, stacks).collect::<Vec<_>>(),
 		Mode::NoReverse => simulate::<false, _>(lines, stacks).collect::<Vec<_>>(),
 	};
+
+	// Convert to string for pretty printing
 	let top = String::from_utf8_lossy(&tops);
 
 	println!("{top}");
