@@ -1,5 +1,6 @@
 #![feature(iter_array_chunks)]
 #![feature(array_methods)]
+#![deny(clippy::pedantic)]
 use std::{
 	error::Error,
 	fs::File,
@@ -30,13 +31,13 @@ struct Args {
 /// Find the common item (character) from among `NUM_SACKS` different collections of ascii characters
 fn get_common_item<const NUM_SACKS: usize>(sacks: [&[u8]; NUM_SACKS]) -> u8 {
 	// Create a copy of each of the sacs so that we can sort them
-	let mut sacks = sacks.map(|sack| sack.to_vec());
+	let mut sacks = sacks.map(<[u8]>::to_vec);
 	for sack in sacks.iter_mut() {
-		sack.sort();
+		sack.sort_unstable();
 	}
 
 	// Create an iterator for each sack to walk through that sack. `sack_tops` are the next item under consideration
-	let mut sack_iters = sacks.map(|sack| sack.into_iter());
+	let mut sack_iters = sacks.map(std::iter::IntoIterator::into_iter);
 	let mut sack_tops = sack_iters.clone().map(|mut iter| iter.next().unwrap());
 
 	// Loop through all of the sacks, checking for matching characters. Each loop iterates only one iterator from a sack at a time.
@@ -53,11 +54,11 @@ fn get_common_item<const NUM_SACKS: usize>(sacks: [&[u8]; NUM_SACKS]) -> u8 {
 				Ok(acc) if acc == top => Ok(acc),
 				// Otherwise, switch to Err and record the smaller value
 				Ok(acc) if acc < top => Err((i - 1, acc)),
-				Ok(_) => Err((i, top)),
 				// If the accumulator is Err, then we know something isn't identical and we just need to find the minimum value,
 				// so record the smaller one.
 				Err((j, min)) if min < top => Err((j, min)),
-				Err(_) => Err((i, top)),
+				// Otherwise, this new item is the minimum value
+				Ok(_) | Err(_) => Err((i, top)),
 			},
 		) {
 			// If the accumulation operation returns Ok, then that means everything was identical and we
@@ -94,46 +95,6 @@ fn split_sacks<const NUM_SACKS: usize>(string: &[u8]) -> [&[u8]; NUM_SACKS] {
 		.unwrap()
 }
 
-#[test]
-/// Test the `common_items` function with given examples from the page
-fn test_common_items() {
-	macro_rules! test_first {
-		($exp1:expr, $exp2:expr) => {
-			let sacks = split_sacks::<2>($exp1);
-			assert_eq!(
-				get_common_item(sacks) as char,
-				$exp2,
-				"Finding similar item in\n  left: `{}`\n right: `{}`",
-				String::from_utf8_lossy(sacks[0]),
-				String::from_utf8_lossy(sacks[1])
-			);
-		};
-	}
-	test_first!(b"vJrwpWtwJgWrhcsFMMfFFhFp", 'p');
-	test_first!(b"jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL", 'L');
-	test_first!(b"PmmdzqPrVvPwwTWBwg", 'P');
-	test_first!(b"wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn", 'v');
-	test_first!(b"ttgJtRGJQctTZtZT", 't');
-	test_first!(b"CrZsJsPPZsGzwwsLwLmpwMDw", 's');
-
-	assert_eq!(
-		get_common_item([
-			b"vJrwpWtwJgWrhcsFMMfFFhFp",
-			b"jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL",
-			b"PmmdzqPrVvPwwTWBwg"
-		]) as char,
-		'r'
-	);
-	assert_eq!(
-		get_common_item([
-			b"wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn",
-			b"ttgJtRGJQctTZtZT",
-			b"CrZsJsPPZsGzwwsLwLmpwMDw"
-		]) as char,
-		'Z'
-	);
-}
-
 /// Convert an item to a priority
 fn priority(item: u8) -> u8 {
 	if item <= b'Z' {
@@ -153,7 +114,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		.lines()
 		// Skip lines which couldn't be read
 		.flatten()
-		.map(|s| s.into_bytes());
+		.map(std::string::String::into_bytes);
 
 	// Convert the lines into common items (either in halves of a sack or between multiple sacks) depending on mode
 	let item_iter: Box<dyn Iterator<Item = _>> = match args.mode {
@@ -167,9 +128,54 @@ fn main() -> Result<(), Box<dyn Error>> {
 	};
 
 	// Convert common items into priorities, then sum
-	let sum = item_iter.map(|item| priority(item) as u64).sum::<u64>();
+	let sum = item_iter.map(|item| u64::from(priority(item))).sum::<u64>();
 
 	println!("{sum}");
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	/// Test the `common_items` function with given examples from the page
+	fn test_common_items() {
+		macro_rules! test_first {
+			($exp1:expr, $exp2:expr) => {
+				let sacks = split_sacks::<2>($exp1);
+				assert_eq!(
+					get_common_item(sacks) as char,
+					$exp2,
+					"Finding similar item in\n  left: `{}`\n right: `{}`",
+					String::from_utf8_lossy(sacks[0]),
+					String::from_utf8_lossy(sacks[1])
+				);
+			};
+		}
+		test_first!(b"vJrwpWtwJgWrhcsFMMfFFhFp", 'p');
+		test_first!(b"jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL", 'L');
+		test_first!(b"PmmdzqPrVvPwwTWBwg", 'P');
+		test_first!(b"wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn", 'v');
+		test_first!(b"ttgJtRGJQctTZtZT", 't');
+		test_first!(b"CrZsJsPPZsGzwwsLwLmpwMDw", 's');
+
+		assert_eq!(
+			get_common_item([
+				b"vJrwpWtwJgWrhcsFMMfFFhFp",
+				b"jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL",
+				b"PmmdzqPrVvPwwTWBwg"
+			]) as char,
+			'r'
+		);
+		assert_eq!(
+			get_common_item([
+				b"wMqvLMZHhHMvwLHjbvcjnnSBnvTQFn",
+				b"ttgJtRGJQctTZtZT",
+				b"CrZsJsPPZsGzwwsLwLmpwMDw"
+			]) as char,
+			'Z'
+		);
+	}
 }

@@ -1,4 +1,5 @@
 #![feature(get_many_mut)]
+#![deny(clippy::pedantic)]
 use std::{
 	collections::VecDeque,
 	fs::File,
@@ -32,6 +33,9 @@ struct Args {
 	mode: Mode,
 }
 
+/// Do a cursory parse through the lines of the input file, and find out the number of stacks,
+/// the largest initial size of a stack, and how many commands there will be to process.
+/// Assumes at most 9 stacks.
 fn get_num_stacks_and_stack_size<T: Iterator<Item = String>>(
 	mut lines: T,
 ) -> (usize, usize, usize) {
@@ -43,20 +47,22 @@ fn get_num_stacks_and_stack_size<T: Iterator<Item = String>>(
 	let stack_size = lines
 		.by_ref()
 		.take_while(|line| {
-			if !line.starts_with(" 1") {
-				true
-			} else {
+			if line.starts_with(" 1") {
 				num_stacks = line.bytes().skip(1).step_by(4).count();
 				false
+			} else {
+				true
 			}
 		})
 		.count();
 
+	// The remaining lines (except for a blank one) are all commands to process
 	let num_commands = lines.skip(1).count();
 
 	(num_stacks, stack_size, num_commands)
 }
 
+/// Parse the first half of the input file into stacks
 fn get_initial_stacks<T: Iterator<Item = String>>(
 	lines: &mut T,
 	num_stacks: usize,
@@ -83,7 +89,7 @@ fn get_initial_stacks<T: Iterator<Item = String>>(
 				.for_each(|(stack, c)| {
 					// Using push_front here because we're reading top-down
 					// and later we can do normal stack operations
-					stack.push_front(c)
+					stack.push_front(c);
 				});
 		});
 
@@ -91,9 +97,13 @@ fn get_initial_stacks<T: Iterator<Item = String>>(
 }
 
 #[derive(Debug)]
+/// Struct epresenting a single move command a la 'move 1 from 2 to 1'
 struct Command {
+	/// How many crates to move
 	num_moved: usize,
+	/// Which stack to move from
 	stack_from: usize,
+	/// Which stack to move to
 	stack_to: usize,
 }
 
@@ -220,7 +230,10 @@ move 1 from 1 to 2";
 
 	#[test]
 	fn initial_stacks() {
-		let lines: Vec<_> = EXAMPLE.lines().map(|line| line.to_string()).collect();
+		let lines: Vec<_> = EXAMPLE
+			.lines()
+			.map(std::string::ToString::to_string)
+			.collect();
 
 		let (num_stacks, stack_size, num_commands) =
 			get_num_stacks_and_stack_size(lines.clone().into_iter());
@@ -247,7 +260,10 @@ move 1 from 1 to 2";
 
 	#[test]
 	fn test_simulate() {
-		let lines: Vec<_> = EXAMPLE.lines().map(|line| line.to_string()).collect();
+		let lines: Vec<_> = EXAMPLE
+			.lines()
+			.map(std::string::ToString::to_string)
+			.collect();
 
 		let (num_stacks, stack_size, num_commands) =
 			get_num_stacks_and_stack_size(lines.clone().into_iter());

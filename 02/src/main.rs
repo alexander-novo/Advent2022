@@ -1,3 +1,5 @@
+#![feature(try_blocks)]
+#![deny(clippy::pedantic)]
 use std::{
 	error::Error,
 	fs::File,
@@ -34,7 +36,7 @@ fn score_shape(p1: u8, p2: u8) -> u8 {
 	// Then calculate who won. Note how each number beats the one before it. Then we can take the difference
 	// and use it to calculate the winner. If they're the same, then the difference is 0 and it's a tie. If the difference is 1,
 	// Then player 1 won and we lost, and if the difference is -1 (2 in euclidean division), then we won
-        + match (p1 as i8 - p2 as i8).rem_euclid(3) {
+        + match (i16::from(p1) - i16::from(p2)).rem_euclid(3) {
             0 => 3,
             1 => 0,
             2 => 6,
@@ -42,31 +44,19 @@ fn score_shape(p1: u8, p2: u8) -> u8 {
         }
 }
 
-#[test]
-// Tests given by page
-fn test_shape() {
-	assert_eq!(score_shape(b'A' - b'A', b'Y' - b'X'), 8);
-	assert_eq!(score_shape(b'B' - b'A', b'X' - b'X'), 1);
-	assert_eq!(score_shape(b'C' - b'A', b'Z' - b'X'), 6);
-}
-
 /// The second version of scoring, where the second player's input is how they should win.
 /// `p` is the tuple of player inputs, where player 1's inputs are as above in [`score_shape`], and player 2's inputs are:
 /// 0 - lose, 1 - tie, 2 - win
 fn score_win(p1: u8, p2: u8) -> u8 {
-	// This is the scoring based on win
-	p2 * 3
-	// What shape we should play to win, Uses inverse logic as in score_shape above - if we want to lose, simply subtract 1,
-	// if we want to tie, do nothing ,and if we want to win, add 1 (then wrap as necessary)
-	+ ((p1 as i8 + (p2 as i8 - 1)).rem_euclid(3) + 1) as u8
-}
+	let re: Result<u8, anyhow::Error> = try {
+		// This is the scoring based on win
+		p2 * 3
+			// What shape we should play to win, Uses inverse logic as in score_shape above - if we want to lose, simply subtract 1,
+			// if we want to tie, do nothing ,and if we want to win, add 1 (then wrap as necessary)
+			+ u8::try_from((i8::try_from(p1)? + (i8::try_from(p2)? - 1)).rem_euclid(3) + 1)?
+	};
 
-#[test]
-// Tests given by page
-fn test_win() {
-	assert_eq!(score_win(b'A' - b'A', b'Y' - b'X'), 4);
-	assert_eq!(score_win(b'B' - b'A', b'X' - b'X'), 1);
-	assert_eq!(score_win(b'C' - b'A', b'Z' - b'X'), 7);
+	re.unwrap()
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -90,7 +80,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		// and then convert to scores depending on chosen scoring method
 		.map(|s| {
 			let b = s.as_bytes();
-			score(b[0] - b'A', b[2] - b'X') as u32
+			u32::from(score(b[0] - b'A', b[2] - b'X'))
 		})
 		// Then sum up the scores
 		.sum();
@@ -98,4 +88,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 	println!("{total_score}");
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_shape() {
+		// Tests given by page
+		assert_eq!(score_shape(b'A' - b'A', b'Y' - b'X'), 8);
+		assert_eq!(score_shape(b'B' - b'A', b'X' - b'X'), 1);
+		assert_eq!(score_shape(b'C' - b'A', b'Z' - b'X'), 6);
+	}
+
+	#[test]
+	fn test_win() {
+		// Tests given by page
+		assert_eq!(score_win(b'A' - b'A', b'Y' - b'X'), 4);
+		assert_eq!(score_win(b'B' - b'A', b'X' - b'X'), 1);
+		assert_eq!(score_win(b'C' - b'A', b'Z' - b'X'), 7);
+	}
 }

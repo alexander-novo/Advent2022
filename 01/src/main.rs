@@ -1,3 +1,4 @@
+#![deny(clippy::pedantic)]
 use std::{
 	cmp::Reverse,
 	collections::BinaryHeap,
@@ -60,7 +61,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	calorie_iter.for_each(|x| {
 		if heap.peek().unwrap() > &x {
 			heap.pop();
-			heap.push(x)
+			heap.push(x);
 		}
 	});
 
