@@ -130,16 +130,22 @@ impl FromStr for Command {
 	}
 }
 
+/// Simulate all of the commands in the input file, with the given initial state of stacks.
+/// Returns the contents of the top crate of all of the stacks at the end of the simulation
 fn simulate<const REVERSE: bool, T: Iterator<Item = String>>(
 	lines: T,
 	mut stacks: Vec<VecDeque<u8>>,
 ) -> impl Iterator<Item = u8> {
 	lines
+		// Parse each line as a command
 		.flat_map(|line| line.parse::<Command>())
+		// Execute the command
 		.for_each(|command| {
 			let stack_from = &mut stacks[command.stack_from];
+			// Split off all of the grabbed crates
 			let mut temp = stack_from.split_off(stack_from.len() - command.num_moved);
 
+			// If it's the CrateMover 9000, we need to reverse this stack before putting on the next stack
 			if REVERSE {
 				temp.make_contiguous().reverse();
 			}
@@ -148,6 +154,7 @@ fn simulate<const REVERSE: bool, T: Iterator<Item = String>>(
 			stack_to.append(&mut temp);
 		});
 
+	// Return the tops of all the crates
 	stacks.into_iter().map(|stack| *stack.back().unwrap())
 }
 
