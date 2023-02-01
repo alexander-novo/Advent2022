@@ -5,27 +5,43 @@ use std::{
 	io::{self, BufRead},
 	path::{Path, PathBuf},
 	str::FromStr,
+	time::Duration,
 };
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
+use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use regex::Regex;
+
+#[derive(Clone, ValueEnum)]
+enum Mode {
+	/// The first variant of the problem, with CrateMover 9000, who inverts the stacks of crates onto other stacks
+	Reverse,
+	/// The second variant of the problem, with CreateMover 9001, who takes stacks of crates as-is and moves them onto other stacks
+	NoReverse,
+}
 
 #[derive(Parser)]
 struct Args {
 	/// Input file path
 	#[arg(short, long, default_value = "input.txt")]
 	input_file: PathBuf,
+	/// What mode to run the program in
+	#[arg(value_enum)]
+	mode: Mode,
 }
 
-fn get_num_stacks_and_stack_size<T: Iterator<Item = String>>(lines: T) -> (usize, usize) {
+fn get_num_stacks_and_stack_size<T: Iterator<Item = String>>(
+	mut lines: T,
+) -> (usize, usize, usize) {
 	// Figure out how many stacks there are and a good initial size for the stacks
 	// by first finding the bottom line of the initial stack setup. This line
 	// tells us how many stacks there are, and how many lines before it tells us how large
 	// these stacks need to be to fit the initial setup.
 	let mut num_stacks = 0;
 	let stack_size = lines
+		.by_ref()
 		.take_while(|line| {
 			if !line.starts_with(" 1") {
 				true
@@ -36,7 +52,9 @@ fn get_num_stacks_and_stack_size<T: Iterator<Item = String>>(lines: T) -> (usize
 		})
 		.count();
 
-	(num_stacks, stack_size)
+	let num_commands = lines.skip(1).count();
+
+	(num_stacks, stack_size, num_commands)
 }
 
 fn get_initial_stacks<T: Iterator<Item = String>>(
@@ -72,41 +90,6 @@ fn get_initial_stacks<T: Iterator<Item = String>>(
 	stacks
 }
 
-#[test]
-fn test_initial_stacks() {
-	// Example given in prompt
-	let setup_string = "    [D]    
-[N] [C]    
-[Z] [M] [P]
- 1   2   3 
- 
-move 1 from 2 to 1
-move 3 from 1 to 3
-move 2 from 2 to 1
-move 1 from 1 to 2";
-	let lines: Vec<_> = setup_string.lines().map(|line| line.to_string()).collect();
-
-	let (num_stacks, stack_size) = get_num_stacks_and_stack_size(lines.clone().into_iter());
-
-	let mut lines = lines.into_iter();
-	let mut stacks = get_initial_stacks(&mut lines, num_stacks, stack_size);
-
-	assert_eq!(num_stacks, 3);
-	assert_eq!(stack_size, 3);
-
-	macro_rules! test_stack {
-		($idx:expr, $str:expr) => {
-			assert_eq!(
-				String::from_utf8_lossy(stacks[$idx - 1].make_contiguous()),
-				$str
-			);
-		};
-	}
-	test_stack!(1, "ZN");
-	test_stack!(2, "MCD");
-	test_stack!(3, "P");
-}
-
 #[derive(Debug)]
 struct Command {
 	num_moved: usize,
@@ -137,99 +120,40 @@ impl FromStr for Command {
 	}
 }
 
-#[test]
-fn test_command_parse() {
-	macro_rules! test {
-		($str:expr, $tuple:expr) => {
-			let command: Command = $str.parse().unwrap();
-			let command = (command.num_moved, command.stack_from, command.stack_to);
-
-			assert_eq!(command, $tuple);
-		};
-	}
-
-	test!("move 1 from 2 to 1", (1, 2, 1));
-	test!("move 3 from 1 to 3", (3, 1, 3));
-	test!("move 2 from 2 to 1", (2, 2, 1));
-	test!("move 1 from 1 to 2", (1, 1, 2));
-}
-
 fn simulate<const REVERSE: bool, T: Iterator<Item = String>>(
 	lines: T,
 	mut stacks: Vec<VecDeque<u8>>,
+	num_commands: usize,
 ) -> impl Iterator<Item = u8> {
-	let mut reverse_stack = VecDeque::with_capacity(if REVERSE {
-		stacks.first().unwrap().capacity()
-	} else {
-		0
-	});
+	let pb =
+		ProgressBar::new(num_commands as u64)
+			.with_style(
+				ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {human_pos}/{human_len} ({eta})")
+					.unwrap()
+					.progress_chars("#>-")
+			);
+	pb.enable_steady_tick(Duration::from_millis(100));
+	let lines = pb.wrap_iter(lines);
 	lines
 		.flat_map(|line| line.parse::<Command>())
 		.for_each(|command| {
-			if let Ok([stack_from, mut stack_to]) =
-				stacks[..].get_many_mut([command.stack_from, command.stack_to])
-			{
-				let mut stack_final = &mut reverse_stack;
-				if REVERSE {
-					std::mem::swap(&mut stack_final, &mut stack_to);
-				}
-				for _ in 0..command.num_moved {
-					stack_to.push_back(stack_from.pop_back().unwrap_or_else(
-						|| panic!("Tried to pop out of stack, but stack was empty. Command:\n{command:#?}. Stacks:\nFrom: `{}`\n  To: `{}`",
-							String::from_utf8_lossy(stack_from.clone().make_contiguous()),
-							String::from_utf8_lossy(stack_to.clone().make_contiguous())
-						)
-					));
-				}
+			let stack_from = &mut stacks[command.stack_from];
+			let mut temp = stack_from.split_off(stack_from.len() - command.num_moved);
 
-				if REVERSE {
-					for _ in 0..command.num_moved {
-						stack_final.push_back(stack_to.pop_back().unwrap());
-					}
-				}
+			if REVERSE {
+				temp.make_contiguous().reverse();
 			}
+
+			let stack_to = &mut stacks[command.stack_to];
+			stack_to.append(&mut temp);
 		});
 
 	stacks.into_iter().map(|stack| *stack.back().unwrap())
 }
 
-#[test]
-fn test_simulate() {
-	// Example given in prompt
-	let setup_string = "    [D]    
-[N] [C]    
-[Z] [M] [P]
- 1   2   3 
- 
-move 1 from 2 to 1
-move 3 from 1 to 3
-move 2 from 2 to 1
-move 1 from 1 to 2";
-
-	let lines: Vec<_> = setup_string.lines().map(|line| line.to_string()).collect();
-
-	let (num_stacks, stack_size) = get_num_stacks_and_stack_size(lines.clone().into_iter());
-
-	let mut lines = lines.into_iter();
-	let stacks = get_initial_stacks(&mut lines, num_stacks, stack_size);
-
-	// Skip the number line and blank line in the instructions
-	let lines = lines.skip(2);
-
-	let tops = simulate::<false, _>(lines.clone(), stacks.clone()).collect::<Vec<_>>();
-	let top = String::from_utf8_lossy(&tops);
-
-	assert_eq!(top, "CMZ");
-
-	let tops = simulate::<true, _>(lines, stacks).collect::<Vec<_>>();
-	let top = String::from_utf8_lossy(&tops);
-
-	assert_eq!(top, "MCD");
-}
-
 fn lines_reader<P: AsRef<Path>>(p: P) -> Result<impl Iterator<Item = String>> {
 	let file = File::open(p)?;
-	Ok(io::BufReader::new(file)
+	Ok(io::BufReader::with_capacity(10_000_000, file)
 		.lines()
 		// Skip lines which couldn't be read
 		.flatten())
@@ -239,7 +163,7 @@ fn main() -> Result<()> {
 	let args = Args::parse();
 
 	let lines = lines_reader(&args.input_file)?;
-	let (num_stacks, stack_size) = get_num_stacks_and_stack_size(lines);
+	let (num_stacks, stack_size, num_commands) = get_num_stacks_and_stack_size(lines);
 
 	let mut lines = lines_reader(&args.input_file)?;
 	let stacks = get_initial_stacks(&mut lines, num_stacks, stack_size);
@@ -247,10 +171,102 @@ fn main() -> Result<()> {
 	// Skip the number line and blank line in the instructions
 	let lines = lines.skip(2);
 
-	let tops = simulate::<true, _>(lines, stacks).collect::<Vec<_>>();
+	let tops = match args.mode {
+		Mode::Reverse => simulate::<true, _>(lines, stacks, num_commands).collect::<Vec<_>>(),
+		Mode::NoReverse => simulate::<false, _>(lines, stacks, num_commands).collect::<Vec<_>>(),
+	};
 	let top = String::from_utf8_lossy(&tops);
 
 	println!("{top}");
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// Example given in prompt
+	static EXAMPLE: &str = "    [D]    
+[N] [C]    
+[Z] [M] [P]
+ 1   2   3 
+ 
+move 1 from 2 to 1
+move 3 from 1 to 3
+move 2 from 2 to 1
+move 1 from 1 to 2";
+
+	#[test]
+	fn command_parse() {
+		macro_rules! test {
+			($str:expr, $tuple:expr) => {
+				let command = $str.parse::<Command>().unwrap();
+				let command = (
+					command.num_moved,
+					command.stack_from + 1,
+					command.stack_to + 1,
+				);
+
+				assert_eq!(command, $tuple);
+			};
+		}
+
+		test!("move 1 from 2 to 1", (1, 2, 1));
+		test!("move 3 from 1 to 3", (3, 1, 3));
+		test!("move 2 from 2 to 1", (2, 2, 1));
+		test!("move 1 from 1 to 2", (1, 1, 2));
+	}
+
+	#[test]
+	fn initial_stacks() {
+		let lines: Vec<_> = EXAMPLE.lines().map(|line| line.to_string()).collect();
+
+		let (num_stacks, stack_size, num_commands) =
+			get_num_stacks_and_stack_size(lines.clone().into_iter());
+
+		let mut lines = lines.into_iter();
+		let mut stacks = get_initial_stacks(&mut lines, num_stacks, stack_size);
+
+		assert_eq!(num_stacks, 3);
+		assert_eq!(stack_size, 3);
+		assert_eq!(num_commands, 4);
+
+		macro_rules! test_stack {
+			($idx:expr, $str:expr) => {
+				assert_eq!(
+					String::from_utf8_lossy(stacks[$idx - 1].make_contiguous()),
+					$str
+				);
+			};
+		}
+		test_stack!(1, "ZN");
+		test_stack!(2, "MCD");
+		test_stack!(3, "P");
+	}
+
+	#[test]
+	fn test_simulate() {
+		let lines: Vec<_> = EXAMPLE.lines().map(|line| line.to_string()).collect();
+
+		let (num_stacks, stack_size, num_commands) =
+			get_num_stacks_and_stack_size(lines.clone().into_iter());
+
+		let mut lines = lines.into_iter();
+		let stacks = get_initial_stacks(&mut lines, num_stacks, stack_size);
+
+		// Skip the number line and blank line in the instructions
+		let lines = lines.skip(2);
+
+		let tops =
+			simulate::<true, _>(lines.clone(), stacks.clone(), num_commands).collect::<Vec<_>>();
+		let top = String::from_utf8_lossy(&tops);
+
+		assert_eq!(top, "CMZ");
+
+		let tops = simulate::<false, _>(lines, stacks, num_commands).collect::<Vec<_>>();
+		let top = String::from_utf8_lossy(&tops);
+
+		assert_eq!(top, "MCD");
+	}
 }
