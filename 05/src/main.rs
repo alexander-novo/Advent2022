@@ -133,17 +133,7 @@ impl FromStr for Command {
 fn simulate<const REVERSE: bool, T: Iterator<Item = String>>(
 	lines: T,
 	mut stacks: Vec<VecDeque<u8>>,
-	num_commands: usize,
 ) -> impl Iterator<Item = u8> {
-	let pb =
-		ProgressBar::new(num_commands as u64)
-			.with_style(
-				ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {human_pos}/{human_len} ({eta})")
-					.unwrap()
-					.progress_chars("#>-")
-			);
-	pb.enable_steady_tick(Duration::from_millis(100));
-	let lines = pb.wrap_iter(lines);
 	lines
 		.flat_map(|line| line.parse::<Command>())
 		.for_each(|command| {
@@ -181,9 +171,23 @@ fn main() -> Result<()> {
 	// Skip the number line and blank line in the instructions
 	let lines = lines.skip(2);
 
+	// Progress bar
+	let pb =
+		ProgressBar::new(num_commands as u64)
+			.with_style(
+				ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {human_pos}/{human_len} ({eta})")
+					.unwrap()
+					.progress_chars("#>-")
+			);
+	// Don't update progress bar every time we simulate a command. Instead do it every .1 second.
+	pb.enable_steady_tick(Duration::from_millis(100));
+
+	// Add progress bar to iterator
+	let lines = pb.wrap_iter(lines);
+
 	let tops = match args.mode {
-		Mode::Reverse => simulate::<true, _>(lines, stacks, num_commands).collect::<Vec<_>>(),
-		Mode::NoReverse => simulate::<false, _>(lines, stacks, num_commands).collect::<Vec<_>>(),
+		Mode::Reverse => simulate::<true, _>(lines, stacks).collect::<Vec<_>>(),
+		Mode::NoReverse => simulate::<false, _>(lines, stacks).collect::<Vec<_>>(),
 	};
 	let top = String::from_utf8_lossy(&tops);
 
@@ -265,7 +269,7 @@ move 1 from 1 to 2";
 			.map(std::string::ToString::to_string)
 			.collect();
 
-		let (num_stacks, stack_size, num_commands) =
+		let (num_stacks, stack_size, _num_commands) =
 			get_num_stacks_and_stack_size(lines.clone().into_iter());
 
 		let mut lines = lines.into_iter();
@@ -274,13 +278,12 @@ move 1 from 1 to 2";
 		// Skip the number line and blank line in the instructions
 		let lines = lines.skip(2);
 
-		let tops =
-			simulate::<true, _>(lines.clone(), stacks.clone(), num_commands).collect::<Vec<_>>();
+		let tops = simulate::<true, _>(lines.clone(), stacks.clone()).collect::<Vec<_>>();
 		let top = String::from_utf8_lossy(&tops);
 
 		assert_eq!(top, "CMZ");
 
-		let tops = simulate::<false, _>(lines, stacks, num_commands).collect::<Vec<_>>();
+		let tops = simulate::<false, _>(lines, stacks).collect::<Vec<_>>();
 		let top = String::from_utf8_lossy(&tops);
 
 		assert_eq!(top, "MCD");

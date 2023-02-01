@@ -1,11 +1,12 @@
 #![feature(try_blocks)]
 #![deny(clippy::pedantic)]
 use std::{
-	error::Error,
 	fs::File,
 	io::{self, BufRead},
 	path::PathBuf,
 };
+
+use anyhow::Result;
 
 use clap::{Parser, ValueEnum};
 
@@ -48,7 +49,7 @@ fn score_shape(p1: u8, p2: u8) -> u8 {
 /// `p` is the tuple of player inputs, where player 1's inputs are as above in [`score_shape`], and player 2's inputs are:
 /// 0 - lose, 1 - tie, 2 - win
 fn score_win(p1: u8, p2: u8) -> u8 {
-	let re: Result<u8, anyhow::Error> = try {
+	let re: Result<u8> = try {
 		// This is the scoring based on win
 		p2 * 3
 			// What shape we should play to win, Uses inverse logic as in score_shape above - if we want to lose, simply subtract 1,
@@ -59,7 +60,7 @@ fn score_win(p1: u8, p2: u8) -> u8 {
 	re.unwrap()
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
 	let args = Args::parse();
 
 	// Load input file, make sure it's openable
