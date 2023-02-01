@@ -216,10 +216,15 @@ move 1 from 1 to 2";
 	// Skip the number line and blank line in the instructions
 	let lines = lines.skip(2);
 
+	let tops = simulate::<false, _>(lines.clone(), stacks.clone()).collect::<Vec<_>>();
+	let top = String::from_utf8_lossy(&tops);
+
+	assert_eq!(top, "CMZ");
+
 	let tops = simulate::<true, _>(lines, stacks).collect::<Vec<_>>();
 	let top = String::from_utf8_lossy(&tops);
 
-	assert_eq!(top, "CMZ")
+	assert_eq!(top, "MCD");
 }
 
 fn lines_reader<P: AsRef<Path>>(p: P) -> Result<impl Iterator<Item = String>> {
