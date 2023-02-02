@@ -41,9 +41,7 @@ fn convert_bits(c: u8) -> u32 {
 fn find_start_of_packet<const WINDOW_SIZE: usize>(string: &str) -> usize {
 	let mut iter = string.as_bytes().iter().map(|c| convert_bits(*c));
 	// A queue for remembering which items are currently being considered in the window.
-	// Space for WINDOW_SIZE + 1 items instead of WINDOW_SIZE, since it's easier if there's room for the next item
-	// in the next window before pushing out the previous item.
-	let mut window = VecDeque::with_capacity(WINDOW_SIZE + 1);
+	let mut window = VecDeque::with_capacity(WINDOW_SIZE);
 	window.extend(iter.clone().take(WINDOW_SIZE));
 
 	// A checksum value which can be used to keep track of the number of unique items in the window.
@@ -60,8 +58,8 @@ fn find_start_of_packet<const WINDOW_SIZE: usize>(string: &str) -> usize {
 		// last item from the previous window, XORing it with the previous checksum (therefore removing it since X ^ c ^ X = c),
 		// and XORing in the item newly added to the window.
 		.chain(iter.scan(checksum, |checksum, c| {
-			window.push_back(c);
 			let remove = window.pop_front().unwrap();
+			window.push_back(c);
 			*checksum ^= remove ^ c;
 			Some(*checksum)
 		}))
