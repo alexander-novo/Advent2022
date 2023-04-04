@@ -15,7 +15,7 @@ use regex::Regex;
 enum Mode {
 	/// The first variant of the problem, where we find the size of all directories below a certain size (100,000)
 	SmallDirSize,
-	/// The second variant of the problem, wher we find the size of the smallest directory we can delete which will give us enough free space
+	/// The second variant of the problem, where we find the size of the smallest directory we can delete which will give us enough free space
 	FreeSpace,
 }
 
@@ -46,28 +46,23 @@ impl FromStr for Listing {
 
 	fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
 		// A regex for parsing the important listings.
-		// Each variant has its own capture group (1, 2, 3) that captures relevant information,
+		// Each variant has its own named capture group that captures relevant information,
 		// such as file size in a file listing. So we can use these capture groups to determine
 		// the variant after matching a single time.
 		lazy_static! {
-			static ref REGEX: Regex =
-				Regex::new(r"^(?:\$ cd (?:(\.\.)|(\S+)))|(?:(\d+) \S+)$").unwrap();
+			static ref REGEX: Regex = Regex::new(
+				r"^(?:\$ cd (?:(?P<dir_up>\.\.)|(?P<dir_down>\S+)))|(?:(?P<file_size>\d+) \S+)$"
+			)
+			.unwrap();
 		}
 
 		match REGEX.captures(s) {
 			Some(captures) => {
-				// The first capture group is the `..` in cd .., so that's changing dirs back up
-				if captures.get(1).is_some() {
+				if captures.name("dir_up").is_some() {
 					Ok(Listing::ChangeDirUp)
-				}
-				// The second capture group is the name of the directory in cd if it didn't match the first one.
-				// The name isn't important, though, so ignore it.
-				else if captures.get(2).is_some() {
+				} else if captures.name("dir_down").is_some() {
 					Ok(Listing::ChangeDirDown)
-				}
-				// The third capture group is the filesize of a file listing.
-				// Parse that and return it.
-				else if let Some(size) = captures.get(3) {
+				} else if let Some(size) = captures.name("file_size") {
 					Ok(Listing::File(size.as_str().parse()?))
 				}
 				// If we matched, we should have matched one of those capture groups
@@ -99,7 +94,7 @@ fn total_size<T: Iterator<Item = String>>(lines: T) -> u64 {
 		.for_each(|listing| match listing {
 			// If we're going down in directories (such as with `cd a`), add a new empty directory
 			Listing::ChangeDirDown => dir_sizes.push(0),
-			// If we're going up in direcrtories (such as with `cd ..`), pop this directory off,
+			// If we're going up in directories (such as with `cd ..`), pop this directory off,
 			// and add it to the sum if it's under MAX_SIZE
 			Listing::ChangeDirUp => {
 				let size = dir_sizes.pop().unwrap();

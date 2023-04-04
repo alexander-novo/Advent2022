@@ -114,7 +114,7 @@ impl FromStr for Command {
 		// Lazily initialize a static regular expression for parsing a command
 		lazy_static! {
 			static ref REGEX: Regex =
-				Regex::new("^move ([[:digit:]]+) from ([[:digit:]]) to ([[:digit:]])$").unwrap();
+				Regex::new("^move (?P<num_moved>[[:digit:]]+) from (?P<from_stack>[[:digit:]]) to (?P<to_stack>[[:digit:]])$").unwrap();
 		}
 
 		// Each number above is captured in a capture group - use those to parse
@@ -123,9 +123,9 @@ impl FromStr for Command {
 			.unwrap_or_else(|| panic!("Command `{text}` doesn't match regex"));
 
 		Ok(Command {
-			num_moved: captures[1].parse()?,
-			stack_from: captures[2].parse::<usize>()? - 1,
-			stack_to: captures[3].parse::<usize>()? - 1,
+			num_moved: captures["num_moved"].parse()?,
+			stack_from: captures["from_stack"].parse::<usize>()? - 1,
+			stack_to: captures["to_stack"].parse::<usize>()? - 1,
 		})
 	}
 }
